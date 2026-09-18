@@ -8,8 +8,8 @@ Assets and deployment scripts for One Inc managed Macs.
 | --- | --- |
 | `wallpaper/wallpaper.jpg` | Company values wallpaper, 3840×2160 (4K), ~492 KB |
 | `scripts/set-wallpaper.sh` | Script that downloads and applies the wallpaper |
-| `profiles/wallpaper.mobileconfig` | MDM profile that enforces the wallpaper (Method 1) |
-| `profiles/ninjarmm-pppc.mobileconfig` | MDM profile granting the NinjaOne agent Automation access (Method 2) |
+| `profiles/ninjarmm-pppc.mobileconfig` | **Deploy via Intune.** Pre-approves the NinjaOne agent so users see no prompt |
+| `profiles/wallpaper.mobileconfig` | Not in use — the alternative approach, which locks the wallpaper |
 
 ## Raw wallpaper URL
 
@@ -24,71 +24,26 @@ deployment immutable, tag the release and reference the tag instead of `main`:
 https://raw.githubusercontent.com/OneIncHD/mac-assets/v1/wallpaper/wallpaper.jpg
 ```
 
-## Pick a deployment method
+## What to deploy
 
-The two options are not interchangeable — they differ in whether users keep
-control of their own wallpaper:
+The chosen approach is the **NinjaOne script**, so users keep control of their
+own wallpaper. Three pieces, and all three are needed:
 
-| | Intune profile | NinjaOne / Intune script |
+| Piece | Where | Purpose |
 | --- | --- | --- |
-| User-visible prompts | **None** | Possible (see below) |
-| Users can change wallpaper | **No** — enforced | Yes, it is just a default |
-| Needs MDM enrolment | Yes | No |
-| Applies at | Login / reboot | Immediately |
+| `wallpaper/wallpaper.jpg` | this repo | The image, fetched over HTTPS |
+| `scripts/set-wallpaper.sh` | NinjaOne | Downloads it and sets the wallpaper |
+| `profiles/ninjarmm-pppc.mobileconfig` | **Intune** | Pre-approves the agent so users see no prompt |
 
-There is no middle ground: the `com.apple.desktop` payload has no setting that
-applies a *changeable* default. If users must keep control, you have to use the
-script and accept the prompt caveats.
+> **Do not also deploy `profiles/wallpaper.mobileconfig`.** That is the
+> alternative approach, and it permanently locks the wallpaper — deploying both
+> would take away the user control this approach exists to preserve.
 
-Both methods need the image staged on disk first, so the script is required
-either way — the profile only points at a local file, it cannot download one.
+The PPPC profile has to come from Intune: macOS ignores PPPC payloads that do
+not arrive via MDM, so NinjaOne cannot deliver it.
 
-### Why not package the image as a .pkg?
 
-Intune can deploy a `.pkg`, but it is the worse option here:
-
-* **Line-of-business app** requires the `.pkg` to be signed with a *Developer ID
-  Installer* certificate, which needs paid Apple Developer Program membership.
-* **macOS app (PKG)** accepts unsigned packages (agent 2308.006+), so no
-  certificate is needed — but Intune detects `.pkg` installs by app bundle ID.
-  A wallpaper installs a `.jpg`, not a `.app`, so there is nothing to detect:
-  the app never reports success and Intune retries it at every check-in.
-
-Either way, updating the wallpaper means rebuilding the package and re-uploading
-it, instead of a `git push`. The shell script needs no certificate, no
-packaging, and no detection rules.
-
-## Method 1 — Intune configuration profile (silent, enforced)
-
-This is the only way to set the wallpaper with **zero** user-visible dialogs. It
-writes a managed preference directly, so nothing sends Apple Events and
-`WallpaperImageExtension` is never launched.
-
-**Order matters.** Stage the image before the profile lands, or the desktop goes
-grey until the next reboot.
-
-1. **Stage the image** — Intune admin center → **Devices → macOS → Shell
-   scripts → Add**
-   - Upload `scripts/set-wallpaper.sh`
-   - Run script as signed-in user: **No** (it must run as root)
-   - Script frequency: every 1 day (it is idempotent — see below)
-   - Assign to your Mac group and let it run once
-2. **Apply the profile** — **Devices → macOS → Configuration → Create →
-   Templates → Custom**
-   - Upload `profiles/wallpaper.mobileconfig`
-   - Assign to the same group
-
-Note that step 1 leaves the script's own `osascript` apply step in place, which
-is what can prompt. If you are going the profile route and want the script to do
-nothing but download, set `APPLY_IN_SESSION=0` at the top of the script.
-
-### Known quirk on Apple Silicon
-
-The lock screen shows the company wallpaper, then after login the default macOS
-wallpaper appears for 10–15 seconds before the company one takes over. Cosmetic,
-but users notice it. Nothing to be done about it short of not using the profile.
-
-## Method 2 — Script only (changeable default)
+## Deployment — NinjaOne script + PPPC profile
 
 1. **NinjaOne:** Automation → Scripts → New Script
    - Language `Shell`, OS `Mac`, Architecture `All`, Run As **Root (System)**
@@ -141,8 +96,8 @@ it. Push it from Intune: **Devices → macOS → Configuration → Create → Te
 → Custom**.
 
 So the script route still needs Intune for this one profile. If you are pushing
-a profile either way, consider Method 1 instead — one profile, no TCC, no
-AppleScript. The only reason to prefer the script is that Method 1 takes the
+a profile either way, consider the enforced profile instead — one profile, no TCC, no
+AppleScript. The only reason to prefer the script is that the enforced profile takes the
 wallpaper choice away from users.
 
 The profile pins the agent's code signature (team ID `EBNT3ZX97E`). If NinjaOne
@@ -152,6 +107,66 @@ the prompt returns. Regenerate with:
 ```
 codesign -dr - /Applications/NinjaRMMAgent/programfiles/ninjarmm-macagent
 ```
+
+## The two approaches
+
+They are not interchangeable — they differ in whether users keep control:
+
+| | Script + PPPC (in use) | Enforced profile |
+| --- | --- | --- |
+| User-visible prompts | None, once PPPC is deployed | None |
+| Users can change wallpaper | **Yes** | No |
+| Needs Intune | For the PPPC profile | For the wallpaper profile |
+| Applies at | Immediately | Login / reboot |
+
+There is no third option: the `com.apple.desktop` payload has no setting that
+applies a *changeable* default, because Apple does not respect its `locked` key.
+
+
+## Alternative (not in use) — enforce with a configuration profile
+
+This is the only way to set the wallpaper with **zero** user-visible dialogs. It
+writes a managed preference directly, so nothing sends Apple Events and
+`WallpaperImageExtension` is never launched.
+
+**Order matters.** Stage the image before the profile lands, or the desktop goes
+grey until the next reboot.
+
+1. **Stage the image** — Intune admin center → **Devices → macOS → Shell
+   scripts → Add**
+   - Upload `scripts/set-wallpaper.sh`
+   - Run script as signed-in user: **No** (it must run as root)
+   - Script frequency: every 1 day (it is idempotent — see below)
+   - Assign to your Mac group and let it run once
+2. **Apply the profile** — **Devices → macOS → Configuration → Create →
+   Templates → Custom**
+   - Upload `profiles/wallpaper.mobileconfig`
+   - Assign to the same group
+
+Note that step 1 leaves the script's own `osascript` apply step in place, which
+is what can prompt. If you are going the profile route and want the script to do
+nothing but download, set `APPLY_IN_SESSION=0` at the top of the script.
+
+### Known quirk on Apple Silicon
+
+The lock screen shows the company wallpaper, then after login the default macOS
+wallpaper appears for 10–15 seconds before the company one takes over. Cosmetic,
+but users notice it. Nothing to be done about it short of not using the profile.
+
+### Why not package the image as a .pkg?
+
+Intune can deploy a `.pkg`, but it is the worse option here:
+
+* **Line-of-business app** requires the `.pkg` to be signed with a *Developer ID
+  Installer* certificate, which needs paid Apple Developer Program membership.
+* **macOS app (PKG)** accepts unsigned packages (agent 2308.006+), so no
+  certificate is needed — but Intune detects `.pkg` installs by app bundle ID.
+  A wallpaper installs a `.jpg`, not a `.app`, so there is nothing to detect:
+  the app never reports success and Intune retries it at every check-in.
+
+Either way, updating the wallpaper means rebuilding the package and re-uploading
+it, instead of a `git push`. The shell script needs no certificate, no
+packaging, and no detection rules.
 
 ## Updating the wallpaper
 
