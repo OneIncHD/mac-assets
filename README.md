@@ -7,7 +7,9 @@ Assets and deployment scripts for One Inc managed Macs.
 | Path | Description |
 | --- | --- |
 | `wallpaper/wallpaper.jpg` | Company values wallpaper, 3840×2160 (4K), ~492 KB |
-| `scripts/set-wallpaper.sh` | NinjaOne script that downloads and applies the wallpaper |
+| `scripts/set-wallpaper.sh` | Script that downloads and applies the wallpaper |
+| `profiles/wallpaper.mobileconfig` | MDM profile that enforces the wallpaper (Method 1) |
+| `profiles/ninjarmm-pppc.mobileconfig` | MDM profile granting the NinjaOne agent Automation access (Method 2) |
 
 ## Raw wallpaper URL
 
@@ -123,14 +125,33 @@ does **not** delete the user's `Index.plist`. All three force macOS to relaunch
 None of those steps were necessary — the `osascript` call already takes effect
 immediately. Do not add them back.
 
-### Automation permission (important)
+### Automation permission (required, not optional)
 
 Setting the desktop picture via `osascript` goes through Apple Events, which
-macOS gates behind TCC. If the script reports *"not authorized to send Apple
-events"*, deploy a **PPPC configuration profile** granting the management agent
-Automation access to `com.apple.systemevents`. Without it the script fails on
-every Mac where the agent has not already been approved — and the approval
-prompt is itself user-visible, so the profile is not optional at scale.
+macOS gates behind TCC. Without pre-approval, every Mac shows the user:
+
+> "ninjarmm-macagent" wants access to control "System Events". Allowing control
+> will provide access to documents and data in "System Events"...
+
+Deploy `profiles/ninjarmm-pppc.mobileconfig` to suppress it.
+
+**A PPPC profile is only honoured when delivered by an approved MDM.** Installing
+it by hand, or pushing it with a NinjaOne script, does nothing — macOS ignores
+it. Push it from Intune: **Devices → macOS → Configuration → Create → Templates
+→ Custom**.
+
+So the script route still needs Intune for this one profile. If you are pushing
+a profile either way, consider Method 1 instead — one profile, no TCC, no
+AppleScript. The only reason to prefer the script is that Method 1 takes the
+wallpaper choice away from users.
+
+The profile pins the agent's code signature (team ID `EBNT3ZX97E`). If NinjaOne
+re-signs the agent under a different identity, the profile stops matching and
+the prompt returns. Regenerate with:
+
+```
+codesign -dr - /Applications/NinjaRMMAgent/programfiles/ninjarmm-macagent
+```
 
 ## Updating the wallpaper
 

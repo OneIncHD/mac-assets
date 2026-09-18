@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Grants the NinjaOne agent permission to send Apple Events to System
+	  Events, which is what scripts/set-wallpaper.sh needs to set the desktop
+	  picture. Without this, every Mac shows the user:
+
+	      "ninjarmm-macagent" wants access to control "System Events".
+
+	  IMPORTANT: PPPC profiles are only honoured when delivered by an approved
+	  MDM. Installing this by hand, or via a NinjaOne script, does nothing -
+	  macOS ignores it. Push it from Intune:
+	      Devices > macOS > Configuration > Create > Templates > Custom
+
+	  Values verified against agent build with team ID EBNT3ZX97E. If NinjaOne
+	  ever re-signs the agent under a different team, regenerate CodeRequirement:
+	      codesign -dr - /Applications/NinjaRMMAgent/programfiles/ninjarmm-macagent
+	-->
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.TCC.configuration-profile-policy</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadIdentifier</key>
+			<string>com.oneinc.pppc.ninjarmm</string>
+			<key>PayloadUUID</key>
+			<string>603A4DD6-B4C2-4653-993B-CE4BF0585DB8</string>
+			<key>PayloadDisplayName</key>
+			<string>Privacy Preferences Policy Control</string>
+			<key>PayloadOrganization</key>
+			<string>One Inc</string>
+			<key>PayloadEnabled</key>
+			<true/>
+			<key>Services</key>
+			<dict>
+				<key>AppleEvents</key>
+				<array>
+					<dict>
+						<!-- The sender: the NinjaOne agent. It is a bare
+						     Mach-O executable, not an .app bundle, so it is
+						     identified by absolute path rather than bundle ID. -->
+						<key>Identifier</key>
+						<string>/Applications/NinjaRMMAgent/programfiles/ninjarmm-macagent</string>
+						<key>IdentifierType</key>
+						<string>path</string>
+						<key>CodeRequirement</key>
+						<string>identifier "ninjarmm-macagent" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = EBNT3ZX97E</string>
+
+						<!-- The receiver: System Events. -->
+						<key>AEReceiverIdentifier</key>
+						<string>com.apple.systemevents</string>
+						<key>AEReceiverIdentifierType</key>
+						<string>bundleID</string>
+						<key>AEReceiverCodeRequirement</key>
+						<string>identifier "com.apple.systemevents" and anchor apple</string>
+
+						<key>Authorization</key>
+						<string>Allow</string>
+						<key>Comment</key>
+						<string>Allow the NinjaOne agent to set the desktop picture.</string>
+					</dict>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+	<key>PayloadScope</key>
+	<string>System</string>
+	<key>PayloadIdentifier</key>
+	<string>com.oneinc.pppc</string>
+	<key>PayloadUUID</key>
+	<string>31A8982D-0C26-46DC-BC49-8A2666D96B3E</string>
+	<key>PayloadOrganization</key>
+	<string>One Inc</string>
+	<key>PayloadDisplayName</key>
+	<string>One Inc - NinjaOne Automation Access</string>
+	<key>PayloadDescription</key>
+	<string>Allows the NinjaOne agent to control System Events so it can set the desktop picture without prompting.</string>
+</dict>
+</plist>
