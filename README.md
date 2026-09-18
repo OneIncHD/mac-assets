@@ -22,59 +22,103 @@ deployment immutable, tag the release and reference the tag instead of `main`:
 https://raw.githubusercontent.com/OneIncHD/mac-assets/v1/wallpaper/wallpaper.jpg
 ```
 
-## Deploying with NinjaOne
+## Pick a deployment method
 
-1. **Automation → Scripts → New Script**
-   - Language: `Shell`
-   - Operating System: `Mac`
-   - Architecture: `All`
-   - Run As: **Root (System)**
+The two options are not interchangeable — they differ in whether users keep
+control of their own wallpaper:
+
+| | Intune profile | NinjaOne / Intune script |
+| --- | --- | --- |
+| User-visible prompts | **None** | Possible (see below) |
+| Users can change wallpaper | **No** — enforced | Yes, it is just a default |
+| Needs MDM enrolment | Yes | No |
+| Applies at | Login / reboot | Immediately |
+
+There is no middle ground: the `com.apple.desktop` payload has no setting that
+applies a *changeable* default. If users must keep control, you have to use the
+script and accept the prompt caveats.
+
+Both methods need the image staged on disk first, so the script is required
+either way — the profile only points at a local file, it cannot download one.
+
+## Method 1 — Intune configuration profile (silent, enforced)
+
+This is the only way to set the wallpaper with **zero** user-visible dialogs. It
+writes a managed preference directly, so nothing sends Apple Events and
+`WallpaperImageExtension` is never launched.
+
+**Order matters.** Stage the image before the profile lands, or the desktop goes
+grey until the next reboot.
+
+1. **Stage the image** — Intune admin center → **Devices → macOS → Shell
+   scripts → Add**
+   - Upload `scripts/set-wallpaper.sh`
+   - Run script as signed-in user: **No** (it must run as root)
+   - Script frequency: every 1 day (it is idempotent — see below)
+   - Assign to your Mac group and let it run once
+2. **Apply the profile** — **Devices → macOS → Configuration → Create →
+   Templates → Custom**
+   - Upload `profiles/wallpaper.mobileconfig`
+   - Assign to the same group
+
+Note that step 1 leaves the script's own `osascript` apply step in place, which
+is what can prompt. If you are going the profile route and want the script to do
+nothing but download, set `APPLY_IN_SESSION=0` at the top of the script.
+
+### Known quirk on Apple Silicon
+
+The lock screen shows the company wallpaper, then after login the default macOS
+wallpaper appears for 10–15 seconds before the company one takes over. Cosmetic,
+but users notice it. Nothing to be done about it short of not using the profile.
+
+## Method 2 — Script only (changeable default)
+
+1. **NinjaOne:** Automation → Scripts → New Script
+   - Language `Shell`, OS `Mac`, Architecture `All`, Run As **Root (System)**
    - Paste the contents of `scripts/set-wallpaper.sh`
-2. Add it to a policy as a scheduled or login-triggered task, or run it ad hoc
-   against a device group.
+2. Add it to a policy as a scheduled or login-triggered task.
 
 The script is idempotent — it checksums the local copy and only re-downloads
 when the image in this repo changes, so it is safe to run on a schedule.
 
 ### What it does
 
-1. Finds the user currently logged in at the console (exits cleanly if nobody is).
-2. Downloads the wallpaper to `/Library/Application Support/One Inc/Wallpaper/`
+1. Downloads the wallpaper to `/Library/Application Support/One Inc/Wallpaper/`
    and verifies it is really an image, not an HTML error page.
-3. Applies it in that user's GUI session via `osascript`, falling back to
-   clearing the macOS 14+ wallpaper store and retrying.
-4. Restarts `WallpaperAgent` and `Dock` so the change appears without a logout.
+2. Finds the user logged in at the console; if nobody is, it stops there with
+   the image already staged for next time.
+3. Applies it in that user's GUI session via `osascript`.
 
-Progress is written to stdout (visible in NinjaOne's script output) and to the
-system log under the tag `set-wallpaper`:
+Progress goes to stdout (visible in the script output) and to the system log
+under the tag `set-wallpaper`:
 
 ```
-log show --predicate 'process == "logger"' --last 1h | grep set-wallpaper
+log show --predicate 'eventMessage CONTAINS "set-wallpaper"' --last 1h
 ```
+
+### Keeping it quiet
+
+The script deliberately does **not** restart `WallpaperAgent` or `Dock`, and
+does **not** delete the user's `Index.plist`. All three force macOS to relaunch
+`WallpaperImageExtension`, which on Sequoia raises a Gatekeeper dialog:
+
+> "WallpaperImageExtension" differs from previously opened versions. Are you
+> sure you want to open it?
+
+None of those steps were necessary — the `osascript` call already takes effect
+immediately. Do not add them back.
 
 ### Automation permission (important)
 
-Setting the desktop picture from a background agent goes through Apple Events,
-which macOS gates behind TCC. If the script reports *"not authorized to send
-Apple events"*, deploy a **PPPC configuration profile** granting the NinjaOne
-agent Automation access to `com.apple.systemevents`. Without it the script will
-fail on every Mac where the agent has not already been approved.
-
-### Alternative: enforce it with a configuration profile
-
-If you want the wallpaper **locked** so users cannot change it, a profile is a
-better fit than a script. Deploy a custom profile with the `com.apple.desktop`
-payload:
-
-| Key | Type | Value |
-| --- | --- | --- |
-| `override-picture-path` | String | `/Library/Application Support/One Inc/Wallpaper/wallpaper.jpg` |
-
-Still run the script (or a NinjaOne file deployment) first, so the image exists
-locally before the profile points at it.
+Setting the desktop picture via `osascript` goes through Apple Events, which
+macOS gates behind TCC. If the script reports *"not authorized to send Apple
+events"*, deploy a **PPPC configuration profile** granting the management agent
+Automation access to `com.apple.systemevents`. Without it the script fails on
+every Mac where the agent has not already been approved — and the approval
+prompt is itself user-visible, so the profile is not optional at scale.
 
 ## Updating the wallpaper
 
 1. Replace `wallpaper/wallpaper.jpg`, commit, and push to `main`.
-2. Machines pick up the new image on the script's next run — no NinjaOne change
-   needed, since the URL is stable.
+2. Machines pick up the new image on the script's next run — no Intune or
+   NinjaOne change needed, since the URL is stable.

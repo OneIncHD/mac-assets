@@ -3,7 +3,8 @@
 # set-wallpaper.sh — download the company wallpaper and apply it for the
 # currently logged-in user.
 #
-# Deploy via NinjaOne as a Mac script, Run As: Root (System).
+# Deploy as a root-level Mac script via Intune (Devices > macOS > Shell
+# scripts) or NinjaOne (Run As: Root).
 # Safe to run repeatedly: the image is only re-downloaded when it changes.
 #
 # Exit codes: 0 = applied (or already current), 1 = failure.
@@ -22,6 +23,12 @@ WALLPAPER_URL="https://raw.githubusercontent.com/OneIncHD/mac-assets/main/wallpa
 # every account on the Mac can read it.
 INSTALL_DIR="/Library/Application Support/One Inc/Wallpaper"
 INSTALL_PATH="${INSTALL_DIR}/wallpaper.jpg"
+
+# 1 = also apply the wallpaper in the logged-in user's session via osascript.
+# 0 = download and stage only, touching nothing in the GUI. Use 0 when a
+#     configuration profile is enforcing the wallpaper, so the script can never
+#     put a dialog in front of a user.
+APPLY_IN_SESSION=1
 
 LOG_TAG="set-wallpaper"
 
@@ -82,6 +89,11 @@ fi
 # Identify the console user
 #-------------------------------------------------------------------------------
 
+if [ "$APPLY_IN_SESSION" -ne 1 ]; then
+    log "Image staged; APPLY_IN_SESSION=0 so leaving the GUI session alone."
+    exit 0
+fi
+
 console_user=$(/usr/bin/stat -f%Su /dev/console)
 
 case "$console_user" in
@@ -96,41 +108,38 @@ log "Console user: ${console_user} (uid ${console_uid})"
 
 #-------------------------------------------------------------------------------
 # Apply it in the user's GUI session
+#
+# Deliberately quiet. Everything that could put a dialog or a visible glitch in
+# front of the user has been removed:
+#
+#   * No `killall WallpaperAgent`. Forcing the agent to restart makes macOS
+#     relaunch WallpaperImageExtension, which on Sequoia can raise a Gatekeeper
+#     "differs from previously opened versions" prompt. The AppleScript below
+#     already takes effect immediately, so the restart was only ever cosmetic.
+#   * No `killall Dock`. Same relaunch risk, plus a visible UI flash.
+#   * No deleting of the user's wallpaper store. Destroying Index.plist to force
+#     a re-read is exactly the kind of disturbance that triggers the prompt, and
+#     it throws away the user's other desktop settings as a side effect.
+#
+# If the AppleScript fails we report it upstream and leave the session alone.
 #-------------------------------------------------------------------------------
 
-apply_via_applescript() {
-    /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" \
-        /usr/bin/osascript -e "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"${INSTALL_PATH}\"" \
-        2>&1
-}
-
 log "Applying wallpaper for ${console_user}"
-if output=$(apply_via_applescript); then
+
+if output=$(/bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" \
+        /usr/bin/osascript \
+        -e "tell application \"System Events\" to tell every desktop to set picture to POSIX file \"${INSTALL_PATH}\"" \
+        2>&1); then
     log "Wallpaper applied"
 else
-    log "AppleScript attempt failed: ${output}"
-    log "Resetting the wallpaper store and retrying"
-
-    # macOS 14+ keeps wallpaper state here. Clearing it and restarting the
-    # agent forces macOS to re-read the setting.
-    user_home=$(/usr/bin/dscl . -read "/Users/${console_user}" NFSHomeDirectory \
-        | /usr/bin/awk '{print $2}')
-    store="${user_home}/Library/Application Support/com.apple.wallpaper/Store"
-    [ -d "$store" ] && /bin/rm -f "${store}/Index.plist"
-
-    /usr/bin/killall -u "$console_user" WallpaperAgent 2>/dev/null
-    /bin/sleep 3
-
-    if output=$(apply_via_applescript); then
-        log "Wallpaper applied on retry"
-    else
-        die "Could not apply wallpaper: ${output}. If this says 'not authorized to send Apple events', grant the NinjaOne agent Automation access to System Events via a PPPC configuration profile."
-    fi
+    log "Could not apply wallpaper: ${output}"
+    case "$output" in
+        *"not authorized"*|*"-1743"*|*"1743"*)
+            die "The management agent lacks Automation access to System Events. Deploy the PPPC profile (see README) — the image is staged at ${INSTALL_PATH} and will apply on the next run once approved."
+            ;;
+    esac
+    die "AppleScript failed. Image is staged at ${INSTALL_PATH}."
 fi
-
-# Nudge the UI so the change shows without a logout.
-/usr/bin/killall -u "$console_user" WallpaperAgent 2>/dev/null
-/usr/bin/killall -u "$console_user" Dock 2>/dev/null
 
 log "Done"
 exit 0

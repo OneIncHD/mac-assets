@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.apple.desktop</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadIdentifier</key>
+			<string>com.oneinc.wallpaper.desktop</string>
+			<key>PayloadUUID</key>
+			<string>B5EB0A33-F958-4398-8C45-EE06E05FAF90</string>
+			<key>PayloadDisplayName</key>
+			<string>Desktop Picture</string>
+			<key>PayloadEnabled</key>
+			<true/>
+
+			<!-- Local path to the image. MUST match INSTALL_PATH in
+			     scripts/set-wallpaper.sh: this profile only points at a file,
+			     it cannot download one, so the image has to be staged BEFORE
+			     the profile lands or the desktop goes grey until next reboot. -->
+			<key>override-picture-path</key>
+			<string>/Library/Application Support/One Inc/Wallpaper/wallpaper.jpg</string>
+
+			<!-- The `locked` key is deliberately omitted. Apple does not
+			     actually respect it: setting it to false still leaves the
+			     wallpaper locked. This payload takes the wallpaper choice away
+			     from users either way - there is no variant of it that sets a
+			     changeable default. Use scripts/set-wallpaper.sh for that. -->
+		</dict>
+	</array>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+
+	<!-- com.apple.desktop is documented as a USER-channel payload. If Intune
+	     reports it as applied but nothing changes, try System here and assign
+	     to a device group instead. -->
+	<key>PayloadScope</key>
+	<string>User</string>
+
+	<key>PayloadIdentifier</key>
+	<string>com.oneinc.wallpaper</string>
+	<key>PayloadUUID</key>
+	<string>A0BA4D78-A391-4652-9413-60EDDAEA0E0D</string>
+	<key>PayloadOrganization</key>
+	<string>One Inc</string>
+	<key>PayloadDisplayName</key>
+	<string>One Inc Company Wallpaper</string>
+	<key>PayloadDescription</key>
+	<string>Sets the desktop picture to the One Inc company wallpaper.</string>
+</dict>
+</plist>
