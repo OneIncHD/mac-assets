@@ -40,23 +40,10 @@ die() {
 }
 
 #-------------------------------------------------------------------------------
-# Identify the console user
-#-------------------------------------------------------------------------------
-
-console_user=$(/usr/bin/stat -f%Su /dev/console)
-
-case "$console_user" in
-    ""|root|loginwindow|_mbsetupuser)
-        log "No user logged in at the console (found '${console_user:-none}'). Nothing to do."
-        exit 0
-        ;;
-esac
-
-console_uid=$(/usr/bin/id -u "$console_user") || die "Could not resolve UID for $console_user"
-log "Console user: ${console_user} (uid ${console_uid})"
-
-#-------------------------------------------------------------------------------
 # Download the wallpaper
+#
+# Done before checking for a logged-in user, so a Mac sitting at the login
+# window still gets the image staged locally for the next run.
 #-------------------------------------------------------------------------------
 
 /bin/mkdir -p "$INSTALL_DIR" || die "Could not create ${INSTALL_DIR}"
@@ -90,6 +77,22 @@ fi
 /bin/chmod 644 "$INSTALL_PATH"
 /usr/sbin/chown root:wheel "$INSTALL_PATH"
 /bin/chmod -R a+rX "$INSTALL_DIR"
+
+#-------------------------------------------------------------------------------
+# Identify the console user
+#-------------------------------------------------------------------------------
+
+console_user=$(/usr/bin/stat -f%Su /dev/console)
+
+case "$console_user" in
+    ""|root|loginwindow|_mbsetupuser)
+        log "Image staged, but no user is logged in at the console (found '${console_user:-none}'). Skipping apply."
+        exit 0
+        ;;
+esac
+
+console_uid=$(/usr/bin/id -u "$console_user") || die "Could not resolve UID for $console_user"
+log "Console user: ${console_user} (uid ${console_uid})"
 
 #-------------------------------------------------------------------------------
 # Apply it in the user's GUI session
