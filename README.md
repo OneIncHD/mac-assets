@@ -41,6 +41,21 @@ script and accept the prompt caveats.
 Both methods need the image staged on disk first, so the script is required
 either way — the profile only points at a local file, it cannot download one.
 
+### Why not package the image as a .pkg?
+
+Intune can deploy a `.pkg`, but it is the worse option here:
+
+* **Line-of-business app** requires the `.pkg` to be signed with a *Developer ID
+  Installer* certificate, which needs paid Apple Developer Program membership.
+* **macOS app (PKG)** accepts unsigned packages (agent 2308.006+), so no
+  certificate is needed — but Intune detects `.pkg` installs by app bundle ID.
+  A wallpaper installs a `.jpg`, not a `.app`, so there is nothing to detect:
+  the app never reports success and Intune retries it at every check-in.
+
+Either way, updating the wallpaper means rebuilding the package and re-uploading
+it, instead of a `git push`. The shell script needs no certificate, no
+packaging, and no detection rules.
+
 ## Method 1 — Intune configuration profile (silent, enforced)
 
 This is the only way to set the wallpaper with **zero** user-visible dialogs. It
