@@ -12,14 +12,14 @@ Assets and deployment scripts for One Inc managed Macs.
 ## Raw wallpaper URL
 
 ```
-https://raw.githubusercontent.com/oneinc/mac-assets/main/wallpaper/wallpaper.jpg
+https://raw.githubusercontent.com/OneIncHD/mac-assets/main/wallpaper/wallpaper.jpg
 ```
 
 `raw.githubusercontent.com` caches branch URLs for about five minutes. To make a
 deployment immutable, tag the release and reference the tag instead of `main`:
 
 ```
-https://raw.githubusercontent.com/oneinc/mac-assets/v1/wallpaper/wallpaper.jpg
+https://raw.githubusercontent.com/OneIncHD/mac-assets/v1/wallpaper/wallpaper.jpg
 ```
 
 ## Deploying with NinjaOne

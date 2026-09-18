@@ -16,7 +16,7 @@ set -u
 
 # Raw GitHub URL of the wallpaper. Pin to a tag or commit SHA instead of a
 # branch if you want deployments to be immutable.
-WALLPAPER_URL="https://raw.githubusercontent.com/oneinc/mac-assets/main/wallpaper/wallpaper.jpg"
+WALLPAPER_URL="https://raw.githubusercontent.com/OneIncHD/mac-assets/main/wallpaper/wallpaper.jpg"
 
 # Where the image lives on disk. Must be outside any user's home directory so
 # every account on the Mac can read it.
